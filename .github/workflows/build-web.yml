@@ -1,4 +1,4 @@
-name: Build Traffic Whisperer Web
+name: Build & Deploy Traffic Whisperer
 
 on:
   push:
@@ -10,11 +10,21 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build-web:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     env:
       GODOT_VERSION: '4.7.1'
@@ -56,8 +66,8 @@ jobs:
 
           unzip -q godot.zip -d godot_bin
 
-          GODOT_BIN="$(find godot_bin -maxdepth 1 \
-            -type f -name 'Godot*' | head -n1)"
+          GODOT_BIN="$(find godot_bin \
+            -maxdepth 1 -type f -name 'Godot*' | head -n1)"
 
           chmod +x "$GODOT_BIN"
           sudo mv "$GODOT_BIN" /usr/local/bin/godot
@@ -73,19 +83,11 @@ jobs:
           cp -a "$TEMPLATE_SOURCE"/. \
             "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/"
 
-          godot --version
-
       - name: Unpack Traffic Whisperer
         run: |
-          set -euo pipefail
-
           rm -rf build_source web_build
           mkdir -p build_source web_build
-
           unzip -q godot_source.zip -d build_source
-
-          test -f "$PROJECT_DIR/project.godot"
-          test -f "$PROJECT_DIR/export_presets.cfg"
 
       - name: Import and validate Godot project
         run: |
@@ -96,8 +98,6 @@ jobs:
 
       - name: Export Web game
         run: |
-          set -euo pipefail
-
           mkdir -p "$PROJECT_DIR/web"
 
           godot --headless \
@@ -106,29 +106,28 @@ jobs:
             "web/index.html"
 
           cp -a "$PROJECT_DIR/web"/. "$WEB_DIR"/
+          touch "$WEB_DIR/.nojekyll"
 
-          test -f "$WEB_DIR/index.html"
-          test -n "$(find "$WEB_DIR" \
-            -maxdepth 1 -name '*.wasm' -print -quit)"
-          test -n "$(find "$WEB_DIR" \
-            -maxdepth 1 -name '*.pck' -print -quit)"
-
-      - name: Add Netlify headers
-        run: |
-          cat > "$WEB_DIR/_headers" <<'EOF'
-          /*
-            Cross-Origin-Opener-Policy: same-origin
-            Cross-Origin-Embedder-Policy: require-corp
-          EOF
-
-      - name: Create playable ZIP
+      - name: Create downloadable Web ZIP
         run: |
           cd "$WEB_DIR"
           zip -qr ../Traffic_Whisperer_Web.zip .
 
-      - name: Upload playable build
+      - name: Upload downloadable build
         uses: actions/upload-artifact@v4
         with:
           name: Traffic-Whisperer-Web
           path: Traffic_Whisperer_Web.zip
           retention-days: 30
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web_build
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
