@@ -103,7 +103,7 @@ jobs:
           godot --headless \
             --path "$PROJECT_DIR" \
             --export-release Web \
-            "$PROJECT_DIR/web/index.html"
+            "web/index.html"
 
           cp -a "$PROJECT_DIR/web"/. "$WEB_DIR"/
 
